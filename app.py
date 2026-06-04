@@ -15,20 +15,20 @@ import subprocess
 from aiohttp import web
 
 # 环境变量
-UUID = os.environ.get('UUID', '7bd180e8-1142-4387-93f5-03e8d750a896')   # 节点UUID
-NEZHA_SERVER = os.environ.get('NEZHA_SERVER', '')    # 哪吒v0填写格式: nezha.xxx.com  哪吒v1填写格式: nezha.xxx.com:8008
-NEZHA_PORT = os.environ.get('NEZHA_PORT', '')        # 哪吒v1请留空，哪吒v0 agent端口
-NEZHA_KEY = os.environ.get('NEZHA_KEY', '')          # 哪吒v0或v1密钥，哪吒面板后台命令里获取
-DOMAIN = os.environ.get('DOMAIN', '')                # 项目分配的域名或反代后的域名,不包含https://前缀,例如: domain.xxx.com
-SUB_PATH = os.environ.get('SUB_PATH', 'sub')         # 节点订阅token
-NAME = os.environ.get('NAME', '')                    # 节点名称
-WSPATH = os.environ.get('WSPATH', UUID[:8])          # 节点路径
-PORT = int(os.environ.get('SERVER_PORT') or os.environ.get('PORT') or 3000)  # http和ws端口，默认自动优先获取容器分配的端口
-AUTO_ACCESS = os.environ.get('AUTO_ACCESS', '').lower() == 'true' # 自动访问保活,默认关闭,true开启,false关闭,需同时填写DOMAIN变量
+XNODE_UUID = os.environ.get('XNODE_UUID', '7bd180e8-1142-4387-93f5-03e8d750a896')   # 节点UUID
+NZ_SERVER = os.environ.get('NZ_SERVER', '')    # 哪吒v0填写格式: nezha.xxx.com  哪吒v1填写格式: nezha.xxx.com:8008
+NZ_PORT = os.environ.get('NZ_PORT', '')        # 哪吒v1请留空，哪吒v0 agent端口
+NZ_KEY = os.environ.get('NZ_KEY', '')          # 哪吒v0或v1密钥，哪吒面板后台命令里获取
+XNODE_DOMAIN = os.environ.get('XNODE_DOMAIN', '')                # 项目分配的域名或反代后的域名,不包含https://前缀,例如: domain.xxx.com
+XNODE_SUB_PATH = os.environ.get('XNODE_SUB_PATH', 'sub')         # 节点订阅token
+XNODE_NAME = os.environ.get('XNODE_NAME', '')                    # 节点名称
+XNODE_WSPATH = os.environ.get('XNODE_WSPATH', XNODE_UUID[:8])          # 节点路径
+PORT = int(os.environ.get('XNODE_SERVER_PORT') or os.environ.get('PORT') or 3000)  # http和ws端口，默认自动优先获取容器分配的端口
+
 DEBUG = os.environ.get('DEBUG', '').lower() == 'true' # 保持默认,调试使用,true开启调试
 
 # 全局变量
-CurrentDomain = DOMAIN
+CurrentDomain = XNODE_DOMAIN
 CurrentPort = 443
 Tls = 'tls'
 ISP = ''
@@ -107,7 +107,7 @@ async def get_isp():
 
 async def get_ip():
     global CurrentDomain, Tls, CurrentPort
-    if not DOMAIN or DOMAIN == 'your-domain.com':
+    if not XNODE_DOMAIN or XNODE_DOMAIN == 'your-domain.com':
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get('https://api-ipv4.ip.sb/ip', timeout=5) as resp:
@@ -122,7 +122,7 @@ async def get_ip():
             Tls = 'tls'
             CurrentPort = 443
     else:
-        CurrentDomain = DOMAIN
+        CurrentDomain = XNODE_DOMAIN
         Tls = 'tls'
         CurrentPort = 443
 
@@ -267,7 +267,7 @@ class ProxyHandler:
             expected_hash_hex1 = hash_obj1.hexdigest()
             
             # 尝试使用标准UUID（带短横线）
-            standard_uuid = UUID
+            standard_uuid = XNODE_UUID
             hash_obj2 = hashlib.sha224()
             hash_obj2.update(standard_uuid.encode())
             expected_hash_hex2 = hash_obj2.hexdigest()
@@ -461,10 +461,10 @@ class ProxyHandler:
 async def websocket_handler(request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
-    CUUID = UUID.replace('-', '')
+    CUUID = XNODE_UUID.replace('-', '')
     path = request.path
     
-    if f'/{WSPATH}' not in path:
+    if f'/{XNODE_WSPATH}' not in path:
         await ws.close()
         return ws
     
@@ -513,20 +513,20 @@ async def http_handler(request):
         except:
             return web.Response(text='Hello world!', content_type='text/html')
     
-    elif request.path == f'/{SUB_PATH}':
+    elif request.path == f'/{XNODE_SUB_PATH}':
         await get_isp()
         await get_ip()
         
-        name_part = f"{NAME}-{ISP}" if NAME else ISP
+        name_part = f"{XNODE_NAME}-{ISP}" if XNODE_NAME else ISP
         tls_param = 'tls' if Tls == 'tls' else 'none'
         ss_tls_param = 'tls;' if Tls == 'tls' else ''
         
         # 生成配置链接
-        vless_url = f"vless://{UUID}@{CurrentDomain}:{CurrentPort}?encryption=none&security={tls_param}&sni={CurrentDomain}&fp=chrome&type=ws&host={CurrentDomain}&path=%2F{WSPATH}#{name_part}"
-        trojan_url = f"trojan://{UUID}@{CurrentDomain}:{CurrentPort}?security={tls_param}&sni={CurrentDomain}&fp=chrome&type=ws&host={CurrentDomain}&path=%2F{WSPATH}#{name_part}"
+        vless_url = f"vless://{XNODE_UUID}@{CurrentDomain}:{CurrentPort}?encryption=none&security={tls_param}&sni={CurrentDomain}&fp=chrome&type=ws&host={CurrentDomain}&path=%2F{XNODE_WSPATH}#{name_part}"
+        trojan_url = f"trojan://{XNODE_UUID}@{CurrentDomain}:{CurrentPort}?security={tls_param}&sni={CurrentDomain}&fp=chrome&type=ws&host={CurrentDomain}&path=%2F{XNODE_WSPATH}#{name_part}"
         
-        ss_method_password = base64.b64encode(f"none:{UUID}".encode()).decode()
-        ss_url = f"ss://{ss_method_password}@{CurrentDomain}:{CurrentPort}?plugin=v2ray-plugin;mode%3Dwebsocket;host%3D{CurrentDomain};path%3D%2F{WSPATH};{ss_tls_param}sni%3D{CurrentDomain};skip-cert-verify%3Dtrue;mux%3D0#{name_part}"
+        ss_method_password = base64.b64encode(f"none:{XNODE_UUID}".encode()).decode()
+        ss_url = f"ss://{ss_method_password}@{CurrentDomain}:{CurrentPort}?plugin=v2ray-plugin;mode%3Dwebsocket;host%3D{CurrentDomain};path%3D%2F{XNODE_WSPATH};{ss_tls_param}sni%3D{CurrentDomain};skip-cert-verify%3Dtrue;mux%3D0#{name_part}"
         
         subscription = f"{vless_url}\n{trojan_url}\n{ss_url}"
         base64_content = base64.b64encode(subscription.encode()).decode()
@@ -540,18 +540,18 @@ def get_download_url():
     arch = platform.machine()
     
     if 'arm' in arch.lower() or 'aarch64' in arch.lower():
-        if not NEZHA_PORT:
+        if not NZ_PORT:
             return 'https://arm64.eooce.com/v1'
         else:
             return 'https://arm64.eooce.com/agent'
     else:
-        if not NEZHA_PORT:
+        if not NZ_PORT:
             return 'https://amd64.eooce.com/v1'
         else:
             return 'https://amd64.eooce.com/agent'
 
 async def download_file():
-    if not NEZHA_SERVER and not NEZHA_KEY:
+    if not NZ_SERVER and not NZ_KEY:
         return
     
     try:
@@ -581,14 +581,14 @@ async def run_nezha():
     
     command = ''
     tls_ports = ['443', '8443', '2096', '2087', '2083', '2053']
-    if NEZHA_SERVER and NEZHA_PORT and NEZHA_KEY:
-        nezha_tls = '--tls' if NEZHA_PORT in tls_ports else ''
-        command = f'nohup ./npm -s {NEZHA_SERVER}:{NEZHA_PORT} -p {NEZHA_KEY} {nezha_tls} --disable-auto-update --report-delay 4 --skip-conn --skip-procs >/dev/null 2>&1 &'
-    elif NEZHA_SERVER and NEZHA_KEY:
-        if not NEZHA_PORT:
-            port = NEZHA_SERVER.split(':')[-1] if ':' in NEZHA_SERVER else ''
+    if NZ_SERVER and NZ_PORT and NZ_KEY:
+        nezha_tls = '--tls' if NZ_PORT in tls_ports else ''
+        command = f'nohup ./npm -s {NZ_SERVER}:{NZ_PORT} -p {NZ_KEY} {nezha_tls} --disable-auto-update --report-delay 4 --skip-conn --skip-procs >/dev/null 2>&1 &'
+    elif NZ_SERVER and NZ_KEY:
+        if not NZ_PORT:
+            port = NZ_SERVER.split(':')[-1] if ':' in NZ_SERVER else ''
             nz_tls = 'true' if port in tls_ports else 'false'
-            config = f"""client_secret: {NEZHA_KEY}
+            config = f"""client_secret: {NZ_KEY}
 debug: false
 disable_auto_update: true
 disable_command_execute: false
@@ -599,14 +599,14 @@ gpu: false
 insecure_tls: true
 ip_report_period: 1800
 report_delay: 4
-server: {NEZHA_SERVER}
+server: {NZ_SERVER}
 skip_connection_count: true
 skip_procs_count: true
 temperature: false
 tls: {nz_tls}
 use_gitee_to_upgrade: false
 use_ipv6_country_code: false
-uuid: {UUID}"""
+uuid: {XNODE_UUID}"""
 
             with open('config.yaml', 'w') as f:
                 f.write(config)
@@ -621,19 +621,6 @@ uuid: {UUID}"""
     except Exception as e:
         logger.error(f'Error running nz: {e}')
 
-async def add_access_task():
-    if not AUTO_ACCESS or not DOMAIN:
-        return
-    
-    full_url = f"https://{DOMAIN}/{SUB_PATH}"
-    try:
-        async with aiohttp.ClientSession() as session:
-            await session.post("https://oooo.serv00.net/add-url",
-                             json={"url": full_url},
-                             headers={'Content-Type': 'application/json'})
-        logger.info('Automatic Access Task added successfully')
-    except:
-        pass
 
 def cleanup_files():
     for file in ['npm', 'config.yaml']:
@@ -661,23 +648,22 @@ async def main():
     
     # 路由
     app.router.add_get('/', http_handler)
-    app.router.add_get(f'/{SUB_PATH}', http_handler)
-    app.router.add_get(f'/{WSPATH}', websocket_handler)
+    app.router.add_get(f'/{XNODE_SUB_PATH}', http_handler)
+    app.router.add_get(f'/{XNODE_WSPATH}', websocket_handler)
     
     # 启动服务
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', actual_port)
     await site.start()
-    logger.info(f"✅ server is running on port {actual_port}")
+    logger.info(f"server is running on port {actual_port}")
     asyncio.create_task(run_nezha())
     async def delayed_cleanup():
         await asyncio.sleep(180)
         cleanup_files()
     
     asyncio.create_task(delayed_cleanup())
-    
-    await add_access_task()
+
     
     try:
         await asyncio.Future()
